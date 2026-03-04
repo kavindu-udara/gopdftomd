@@ -1,0 +1,6 @@
+*.pdf
+/bin
+/content
+form.json
+*.pdf
+*.md
