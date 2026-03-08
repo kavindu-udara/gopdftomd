@@ -4,3 +4,4 @@
 form.json
 *.pdf
 *.md
+/output

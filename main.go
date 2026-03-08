@@ -1,88 +1,123 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
-	// "strconv"
-
+	controller "github.com/kavindu-udara/gopdftomd/controllers"
 	api "github.com/pdfcpu/pdfcpu/pkg/api"
-	// reader "github.com/kavindu-udara/PDFtoMD/reader"
 )
 
 func main() {
 
-	file, err := os.Open("test.pdf")
+	file := flag.String("f", "", "input file")
+	option := flag.String("o", "markdown", "output format (markdown, text, json)")
+	output := flag.String("out", "output", "output file name")
+
+	flag.Parse()
+
+	if *file == "" {
+		fmt.Println("Please provide an input file using -f flag.")
+		return
+	}
+
+	// check the file is exists
+	if _, err := os.Stat(*file); os.IsNotExist(err) {
+		fmt.Printf("File %s does not exist.\n", *file)
+		return
+	}
+
+	// check the output format
+	if *option != "markdown" && *option != "text" && *option != "json" {
+		fmt.Printf("Invalid output format: %s. Supported formats are: markdown, text, json.\n", *option)
+		return
+	}
+
+	// check the output folder is mentioned if not default to current folder
+	if *output == "" {
+		*output = "output"
+	}
+
+	// open the file
+	pdf, err := os.Open(*file)
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
+	defer pdf.Close()
 
-	context, err := api.ReadContextFile("test.pdf")
-	if err != nil {
-		panic(err)
-	}
+	//
 
-	dic, types, model, err := context.PageDict(1, true)
-	if err != nil {
-		panic(err)
-	}
-
-	// fmt.Println("Context : ", context)
-	fmt.Println("Page Dict : ", dic)
-	fmt.Println("Types : ", types)
-	fmt.Println("Model : ", model)
-
-	// get pages count
-	fmt.Printf("Pages count : %d\n", context.PageCount)
-
-	// extract first page
-	modelContext, err := api.ReadContext(file, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(modelContext.FindObject(11))
-	// read object 11 stream
-	obj, err := modelContext.FindObject(11)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Object 11 : ", obj.PDFString())
-
-	// err = api.ExtractContentFile("test.pdf", "content", nil, nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// err = api.ExportFormFile("test.pdf", "form.json", nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// fmt.Println("Extracted Page : ", modelContext)
-
-	// readable
-
-	raw, err := readFile("content/test_Content_page_153.txt")
+	context, err := api.ReadContextFile(*file)
 	if err != nil {
 		panic(err)
 	}
 
-	runs := parseContentStream(raw)
+	// get Page count
+	fmt.Println("Pages count : ", controller.GetPageCount(context))
 
-	for _, run := range runs {
-		fmt.Printf("Text: %q, Font: %s, Size: %.2f, Position: (%.2f, %.2f)\n",
-			run.Text, run.Font, run.Size, run.X, run.Y)
+	pgCount := controller.GetPageCount(context)
+	baseName := strings.TrimSuffix(filepath.Base(*file), filepath.Ext(*file))
+	maxPageDigits := len(fmt.Sprint(pgCount))
+
+	if *option == "markdown" {
+		fmt.Printf("Extracting content from %d pages and converting to markdown...\n", pgCount)
+
+		// create the output folder if not exists
+		if _, err := os.Stat(*output); os.IsNotExist(err) {
+			err = os.Mkdir(*output, 0755)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		if err := os.MkdirAll("mds", 0755); err != nil {
+			panic(err)
+		}
+
+		imagesDir := filepath.Join(*output, "images")
+		if err := os.MkdirAll(imagesDir, 0755); err != nil {
+			panic(err)
+		}
+
+		// Extract all images once, then page-level links are resolved from names like: <pdf>_<page>_<ImX>.<ext>
+		err = api.ExtractImagesFile(*file, imagesDir, nil, nil)
+		if err != nil {
+			panic(err)
+		}
+
+		for i := 1; i <= pgCount; i++ {
+
+			err = api.ExtractContentFile(*file, *output, []string{fmt.Sprint(i)}, nil)
+			if err != nil {
+				panic(err)
+			}
+
+			// read the extracted content
+			// file name structure is [filename]_Content_page_[page number].txt
+			content, err := os.ReadFile(fmt.Sprintf("%s/%s_Content_page_%d.txt", *output, baseName, i))
+			if err != nil {
+				panic(err)
+			}
+
+			runs := parseContentStream(string(content))
+			imageRefs, err := resolvePageImageRefs(string(content), imagesDir, baseName, i, maxPageDigits)
+			if err != nil {
+				panic(err)
+			}
+
+			md := runsToMarkdownWithRulesAndImages(runs, imageRefs, DefaultMarkdownSizeRules)
+			err = os.WriteFile(fmt.Sprintf("mds/output_page_%d.md", i), []byte(md), 0644)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Page %d processed and saved as mds/output_page_%d.md\n", i, i)
+		}
+		fmt.Println("Content extraction completed. Converting to markdown...")
 	}
 
-	rules := DefaultMarkdownSizeRules
-	md := runsToMarkdownWithRules(runs, rules)
-
-	if err := os.WriteFile("output.md", []byte(md), 0644); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Markdown output written to output.md")
+	fmt.Println("Done.")
 
 }
