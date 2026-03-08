@@ -26,6 +26,18 @@ var DefaultMarkdownSizeRules = MarkdownSizeRules{
 	ParagraphGap:       12.0,
 }
 
+// formatText applies markdown formatting (bold, italic) to text
+func formatText(text string, isBold, isItalic bool) string {
+	if isBold && isItalic {
+		return "***" + text + "***"
+	} else if isBold {
+		return "**" + text + "**"
+	} else if isItalic {
+		return "*" + text + "*"
+	}
+	return text
+}
+
 // ...existing code...
 
 func classifyBySize(size float64, rules MarkdownSizeRules) string {
@@ -48,19 +60,31 @@ func classifyBySize(size float64, rules MarkdownSizeRules) string {
 func runsToMarkdownWithRules(runs []TextRun, rules MarkdownSizeRules) string {
 	var out strings.Builder
 	var line strings.Builder
+	var lineFormatting struct {
+		isBold   bool
+		isItalic bool
+	}
+	var lineBullet bool
 	prevY := 0.0
 	hasPrev := false
 
 	flushLine := func(paragraphBreak bool) {
 		txt := strings.TrimSpace(line.String())
 		if txt != "" {
-			out.WriteString(txt)
+			if lineBullet {
+				out.WriteString("- ")
+			}
+			formattedTxt := formatText(txt, lineFormatting.isBold, lineFormatting.isItalic)
+			out.WriteString(formattedTxt)
 			out.WriteString("\n")
 			if paragraphBreak {
 				out.WriteString("\n")
 			}
 		}
 		line.Reset()
+		lineBullet = false
+		lineFormatting.isBold = false
+		lineFormatting.isItalic = false
 	}
 
 	for _, r := range runs {
@@ -81,7 +105,8 @@ func runsToMarkdownWithRules(runs []TextRun, rules MarkdownSizeRules) string {
 			} else if kind == "h2" {
 				prefix = "## "
 			}
-			out.WriteString(prefix + txt + "\n\n")
+			formattedTxt := formatText(txt, r.IsBold, r.IsItalic)
+			out.WriteString(prefix + formattedTxt + "\n\n")
 			hasPrev = false
 			continue
 		}
@@ -90,6 +115,9 @@ func runsToMarkdownWithRules(runs []TextRun, rules MarkdownSizeRules) string {
 			line.WriteString(txt)
 			prevY = r.Y
 			hasPrev = true
+			lineBullet = r.IsBullet
+			lineFormatting.isBold = r.IsBold
+			lineFormatting.isItalic = r.IsItalic
 			continue
 		}
 
@@ -100,6 +128,9 @@ func runsToMarkdownWithRules(runs []TextRun, rules MarkdownSizeRules) string {
 		} else {
 			flushLine(dy >= rules.ParagraphGap)
 			line.WriteString(txt)
+			lineBullet = r.IsBullet
+			lineFormatting.isBold = r.IsBold
+			lineFormatting.isItalic = r.IsItalic
 		}
 		prevY = r.Y
 	}
@@ -111,6 +142,11 @@ func runsToMarkdownWithRules(runs []TextRun, rules MarkdownSizeRules) string {
 func runsToMarkdownWithRulesAndImages(runs []TextRun, imageRefs []ImageRef, rules MarkdownSizeRules) string {
 	var out strings.Builder
 	var line strings.Builder
+	var lineFormatting struct {
+		isBold   bool
+		isItalic bool
+	}
+	var lineBullet bool
 	prevY := 0.0
 	hasPrev := false
 
@@ -125,13 +161,20 @@ func runsToMarkdownWithRulesAndImages(runs []TextRun, imageRefs []ImageRef, rule
 	flushLine := func(paragraphBreak bool) {
 		txt := strings.TrimSpace(line.String())
 		if txt != "" {
-			out.WriteString(txt)
+			if lineBullet {
+				out.WriteString("- ")
+			}
+			formattedTxt := formatText(txt, lineFormatting.isBold, lineFormatting.isItalic)
+			out.WriteString(formattedTxt)
 			out.WriteString("\n")
 			if paragraphBreak {
 				out.WriteString("\n")
 			}
 		}
 		line.Reset()
+		lineBullet = false
+		lineFormatting.isBold = false
+		lineFormatting.isItalic = false
 	}
 
 	flushImagesAboveY := func(y float64) {
@@ -163,7 +206,8 @@ func runsToMarkdownWithRulesAndImages(runs []TextRun, imageRefs []ImageRef, rule
 			} else if kind == "h2" {
 				prefix = "## "
 			}
-			out.WriteString(prefix + txt + "\n\n")
+			formattedTxt := formatText(txt, r.IsBold, r.IsItalic)
+			out.WriteString(prefix + formattedTxt + "\n\n")
 			hasPrev = false
 			continue
 		}
@@ -172,6 +216,9 @@ func runsToMarkdownWithRulesAndImages(runs []TextRun, imageRefs []ImageRef, rule
 			line.WriteString(txt)
 			prevY = r.Y
 			hasPrev = true
+			lineBullet = r.IsBullet
+			lineFormatting.isBold = r.IsBold
+			lineFormatting.isItalic = r.IsItalic
 			continue
 		}
 
@@ -182,6 +229,9 @@ func runsToMarkdownWithRulesAndImages(runs []TextRun, imageRefs []ImageRef, rule
 		} else {
 			flushLine(dy >= rules.ParagraphGap)
 			line.WriteString(txt)
+			lineBullet = r.IsBullet
+			lineFormatting.isBold = r.IsBold
+			lineFormatting.isItalic = r.IsItalic
 		}
 		prevY = r.Y
 	}

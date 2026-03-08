@@ -3,5 +3,5 @@
 /content
 form.json
 *.pdf
-*.md
-/output
+/output/*
+*.txt

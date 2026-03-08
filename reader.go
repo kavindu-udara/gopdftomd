@@ -9,10 +9,13 @@ import (
 )
 
 type TextRun struct {
-	Text string
-	Font string
-	Size float64
-	X, Y float64
+	Text     string
+	Font     string
+	Size     float64
+	X, Y     float64
+	IsBold   bool
+	IsItalic bool
+	IsBullet bool
 }
 
 var (
@@ -52,7 +55,9 @@ func parseContentStream(s string) []TextRun {
 		if m := reTj.FindStringSubmatch(op); len(m) == 2 {
 			txt := cleanText(decodePDFLiteral(m[1]))
 			if txt != "" {
-				runs = append(runs, TextRun{Text: txt, Font: font, Size: size, X: x, Y: y})
+				isBold, isItalic := detectFormattingFromFont(font)
+				isBullet := detectBulletPoint(txt)
+				runs = append(runs, TextRun{Text: txt, Font: font, Size: size, X: x, Y: y, IsBold: isBold, IsItalic: isItalic, IsBullet: isBullet})
 			}
 			continue
 		}
@@ -75,7 +80,9 @@ func parseContentStream(s string) []TextRun {
 			}
 			txt := cleanText(b.String())
 			if txt != "" {
-				runs = append(runs, TextRun{Text: txt, Font: font, Size: size, X: x, Y: y})
+				isBold, isItalic := detectFormattingFromFont(font)
+				isBullet := detectBulletPoint(txt)
+				runs = append(runs, TextRun{Text: txt, Font: font, Size: size, X: x, Y: y, IsBold: isBold, IsItalic: isItalic, IsBullet: isBullet})
 			}
 		}
 	}
@@ -111,6 +118,27 @@ func cleanText(s string) string {
 		}
 	}
 	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func detectFormattingFromFont(fontName string) (bool, bool) {
+	fontLower := strings.ToLower(fontName)
+
+	isBold := strings.Contains(fontLower, "bold") || strings.HasSuffix(fontLower, "-b") || strings.Contains(fontLower, "+bold")
+	isItalic := strings.Contains(fontLower, "italic") || strings.Contains(fontLower, "oblique") || strings.HasSuffix(fontLower, "-i") || strings.Contains(fontLower, "+italic")
+
+	return isBold, isItalic
+}
+
+func detectBulletPoint(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	bulletChars := []string{"•", "◦", "▪", "■", "□", "◆", "-", "*", "+"}
+
+	for _, char := range bulletChars {
+		if strings.HasPrefix(trimmed, char) && len(trimmed) > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func readFile(path string) (string, error) {

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	controller "github.com/kavindu-udara/gopdftomd/controllers"
 	api "github.com/pdfcpu/pdfcpu/pkg/api"
 )
 
@@ -56,9 +55,9 @@ func main() {
 	}
 
 	// get Page count
-	fmt.Println("Pages count : ", controller.GetPageCount(context))
+	fmt.Println("Pages count : ", context.PageCount)
 
-	pgCount := controller.GetPageCount(context)
+	pgCount := context.PageCount
 	baseName := strings.TrimSuffix(filepath.Base(*file), filepath.Ext(*file))
 	maxPageDigits := len(fmt.Sprint(pgCount))
 
